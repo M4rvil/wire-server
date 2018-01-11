@@ -9,11 +9,18 @@
 module Brig.Types.Provider
     ( module Brig.Types.Provider
 
+
       -- * Re-exports
     , module Common
     , HttpsUrl (..)
     , ServiceToken (..)
     , ServiceTag (..)
+
+    -- TODO: This is already exported, we really want
+    --       to avoid exporting the constructor for
+    --       VerifiedServiceTag
+    , VerifiedServiceTag
+    , unsafeVerifiedServiceTag
     ) where
 
 import Brig.Types.Client.Prekey
@@ -330,6 +337,24 @@ instance ToJSON ServiceKey where
 --------------------------------------------------------------------------------
 -- NewService
 
+-- Some tags may be reserved
+newtype VerifiedServiceTag = VerifiedServiceTag 
+    { getServiceTag :: ServiceTag } deriving (Eq, Show, Ord, ToJSON)
+
+instance FromJSON VerifiedServiceTag where
+    parseJSON = withText "VerifiedServiceTag" $
+        either fail pure . checkTag
+
+-- Do not use this in production code
+unsafeVerifiedServiceTag :: ServiceTag -> VerifiedServiceTag
+unsafeVerifiedServiceTag ApprovedTag = error "approved tag not allowed in this context"
+unsafeVerifiedServiceTag x           = VerifiedServiceTag x
+  
+checkTag :: Text -> Either String VerifiedServiceTag
+checkTag t = case eitherDecodeStrict' (Text.encodeUtf8 t) of
+    Right ApprovedTag -> fail "approved tag not allowed in this context"
+    x                 -> VerifiedServiceTag <$> x
+
 -- | Input data for registering a new service.
 data NewService = NewService
     { newServiceName   :: !Name
@@ -338,7 +363,7 @@ data NewService = NewService
     , newServiceKey    :: !ServiceKeyPEM
     , newServiceToken  :: !(Maybe ServiceToken)
     , newServiceAssets :: [Asset]
-    , newServiceTags   :: Range 1 3 (Set ServiceTag)
+    , newServiceTags   :: Range 1 3 (Set VerifiedServiceTag)
     }
 
 instance FromJSON NewService where
@@ -485,7 +510,7 @@ data UpdateService = UpdateService
     { updateServiceName     :: !(Maybe Name)
     , updateServiceDescr    :: !(Maybe Text)
     , updateServiceAssets   :: !(Maybe [Asset])
-    , updateServiceTags     :: !(Maybe (Range 1 3 (Set ServiceTag)))
+    , updateServiceTags     :: !(Maybe (Range 1 3 (Set VerifiedServiceTag)))
     }
 
 instance FromJSON UpdateService where

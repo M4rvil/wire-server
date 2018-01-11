@@ -280,7 +280,7 @@ testUpdateService config db brig = do
             { updateServiceName   = Just newName
             , updateServiceDescr  = Just newDescr
             , updateServiceAssets = Just newAssets
-            , updateServiceTags   = Just (unsafeRange newTags)
+            , updateServiceTags   = Just (unsafeRange $ Set.map unsafeVerifiedServiceTag newTags)
             }
     updateService brig pid sid upd !!!  const 200 === statusCode
     _rs <- getService brig pid sid <!! const 200 === statusCode
@@ -293,7 +293,7 @@ testUpdateService config db brig = do
     -- Excercise all individual tags
     forM_ [minBound ..] $ \tag -> do
         let t = Set.singleton tag
-        let u = upd { updateServiceTags = Just (unsafeRange t) }
+        let u = upd { updateServiceTags = Just (unsafeRange $ Set.map unsafeVerifiedServiceTag t) }
         updateService brig pid sid u !!! const 200 === statusCode
         _rs <- getService brig pid sid <!! const 200 === statusCode
         let Just _svc = decodeBody _rs
@@ -405,7 +405,7 @@ testListServicesByTagAndPrefix config db brig = do
     mkName uniq n = Name (uniq <> n)
 
     mkNew new (n, t) = new { newServiceName = n
-                           , newServiceTags = unsafeRange (Set.fromList t)
+                           , newServiceTags = unsafeRange (Set.fromList $ fmap unsafeVerifiedServiceTag t)
                            }
 
     select (Name prefix) nm = filter (isPrefixOf (toLower prefix) . toLower . fromName) nm
@@ -844,7 +844,7 @@ defNewService config = liftIO $ do
         , newServiceKey    = key
         , newServiceToken  = Nothing
         , newServiceAssets = defServiceAssets
-        , newServiceTags   = defServiceTags
+        , newServiceTags   = defVerifiedServiceTags
         }
 
 defNewProvider :: Email -> NewProvider
@@ -879,6 +879,9 @@ defServiceUrl = fromJust (fromByteString "https://localhost/test")
 
 defServiceTags :: Range 1 3 (Set ServiceTag)
 defServiceTags = unsafeRange (Set.singleton SocialTag)
+
+defVerifiedServiceTags :: Range 1 3 (Set VerifiedServiceTag)
+defVerifiedServiceTags = unsafeRange (Set.singleton $ unsafeVerifiedServiceTag SocialTag)
 
 defServiceAssets :: [Asset]
 defServiceAssets = [ImageAsset "key" (Just AssetComplete)]

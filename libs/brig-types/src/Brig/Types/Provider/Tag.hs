@@ -16,6 +16,7 @@ import qualified Data.Text.Encoding as Text
 -- | A fixed enumeration of tags for services.
 data ServiceTag
     = AudioTag
+    | ApprovedTag
     | BooksTag
     | BusinessTag
     | DesignTag

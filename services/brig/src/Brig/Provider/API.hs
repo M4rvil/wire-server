@@ -62,6 +62,7 @@ import qualified Brig.Types.Provider.External as Ext
 import qualified Data.ByteString.Lazy.Char8   as LC8
 import qualified Data.List                    as List
 import qualified Data.Map.Strict              as Map
+import qualified Data.Set                     as Set
 import qualified Data.Swagger.Build.Api       as Doc
 import qualified Data.Text.Ascii              as Ascii
 import qualified OpenSSL.PEM                  as SSL
@@ -379,7 +380,7 @@ addService (pid ::: req) = do
 
     (pk, fp) <- validateServiceKey pubkey >>= maybeInvalidServiceKey
     token    <- maybe randServiceToken return (newServiceToken new)
-    sid      <- DB.insertService pid name descr baseUrl token pk fp assets tags
+    sid      <- DB.insertService pid name descr baseUrl token pk fp assets (Set.map getServiceTag tags)
 
     let rstoken = maybe (Just token) (const Nothing) (newServiceToken new)
     return $ setStatus status201
@@ -403,7 +404,7 @@ updateService (pid ::: sid ::: req) = do
     let newName   = updateServiceName upd
     let newDescr  = updateServiceDescr upd
     let newAssets = updateServiceAssets upd
-    let newTags   = updateServiceTags upd
+    let newTags   = toServiceTags <$> updateServiceTags upd
     DB.updateService pid sid newName newDescr newAssets newTags
 
     -- Update tag index
@@ -415,6 +416,9 @@ updateService (pid ::: sid ::: req) = do
         DB.updateServiceTags pid sid (name, rcast tags) (name', rcast tags')
 
     return empty
+  where
+    toServiceTags :: Range 1 3 (Set.Set VerifiedServiceTag) -> Range 1 3 (Set.Set ServiceTag)
+    toServiceTags = unsafeRange . Set.map getServiceTag . fromRange
 
 updateServiceConn :: ProviderId ::: ServiceId ::: Request -> Handler Response
 updateServiceConn (pid ::: sid ::: req) = do
