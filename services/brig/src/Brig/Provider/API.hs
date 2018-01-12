@@ -265,6 +265,18 @@ routes = do
         .&> zauth ZAuthBot
         .&> capture "uid"
 
+    -- Internal API ------------------------------------------------------------
+
+    post "/i/providers/:pid/services/:sid/verify" (continue verifyService) $
+        accept "application" "json"
+        .&> capture "pid"
+        .&. capture "sid"
+
+    post "/i/providers/:pid/services/:sid/unverify" (continue unverifyService) $
+        accept "application" "json"
+        .&> capture "pid"
+        .&. capture "sid"
+
 --------------------------------------------------------------------------------
 -- Public API (Unauthenticated)
 
@@ -490,6 +502,19 @@ deleteAccount (pid ::: req) = do
         DB.deleteService pid sid
     DB.deleteKey (mkEmailKey (providerEmail prov))
     DB.deleteAccount pid
+    return empty
+
+-- Internal Service API
+verifyService :: ProviderId ::: ServiceId -> Handler Response
+verifyService (pid ::: sid) = do
+    _ <- DB.lookupService pid sid >>= maybeServiceNotFound
+    DB.updateServiceVerifiedStatus pid sid True
+    return empty
+
+unverifyService :: ProviderId ::: ServiceId -> Handler Response
+unverifyService (pid ::: sid) = do
+    _ <- DB.lookupService pid sid >>= maybeServiceNotFound
+    DB.updateServiceVerifiedStatus pid sid False
     return empty
 
 --------------------------------------------------------------------------------

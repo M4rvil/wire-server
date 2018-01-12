@@ -243,6 +243,12 @@ deleteService pid sid =
     cql :: PrepQuery W (ProviderId, ServiceId) ()
     cql = "DELETE FROM service WHERE provider = ? AND id = ?"
 
+updateServiceVerifiedStatus :: MonadClient m => ProviderId -> ServiceId -> Bool -> m ()
+updateServiceVerifiedStatus pid sid verified =
+    retry x5 $ write cql $ params Quorum (verified, pid, sid)
+  where
+    cql :: PrepQuery W (Bool, ProviderId, ServiceId) ()
+    cql = "UPDATE service SET verified = ? WHERE provider = ? AND id = ?"
 --------------------------------------------------------------------------------
 -- Service Profiles
 
