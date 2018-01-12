@@ -177,12 +177,12 @@ lookupService pid sid = fmap (fmap mk) $
     retry x1 $ query1 cql $ params Quorum (pid, sid)
   where
     cql :: PrepQuery R (ProviderId, ServiceId)
-                       (Name, Maybe Text, Text, HttpsUrl, List1 ServiceToken, List1 ServiceKey, [Asset], Set ServiceTag, Bool)
-    cql = "SELECT name, summary, descr, base_url, auth_tokens, pubkeys, assets, tags, enabled \
+                       (Name, Maybe Text, Text, HttpsUrl, List1 ServiceToken, List1 ServiceKey, [Asset], Set ServiceTag, Bool, Maybe Bool)
+    cql = "SELECT name, summary, descr, base_url, auth_tokens, pubkeys, assets, tags, enabled, verified \
           \FROM service WHERE provider = ? AND id = ?"
 
-    mk (name, summary, descr, url, toks, keys, assets, tags, enabled) =
-        Service sid name (fromMaybe mempty summary) descr url toks keys assets (Set.fromList (fromSet tags)) enabled
+    mk (name, summary, descr, url, toks, keys, assets, tags, enabled, verified) =
+        Service sid name (fromMaybe mempty summary) descr url toks keys assets (Set.fromList (fromSet tags)) enabled (fromMaybe False verified)
 
 listServices :: MonadClient m
     => ProviderId
@@ -191,13 +191,13 @@ listServices p = fmap (map mk) $
     retry x1 $ query cql $ params Quorum (Identity p)
   where
     cql :: PrepQuery R (Identity ProviderId)
-                       (ServiceId, Name, Maybe Text, Text, HttpsUrl, List1 ServiceToken, List1 ServiceKey, [Asset], Set ServiceTag, Bool)
+                       (ServiceId, Name, Maybe Text, Text, HttpsUrl, List1 ServiceToken, List1 ServiceKey, [Asset], Set ServiceTag, Bool, Maybe Bool)
     cql = "SELECT id, name, summary, descr, base_url, auth_tokens, pubkeys, assets, tags, enabled \
           \FROM service WHERE provider = ?"
 
-    mk (sid, name, summary, descr, url, toks, keys, assets, tags, enabled) =
+    mk (sid, name, summary, descr, url, toks, keys, assets, tags, enabled, verified) =
         let tags' = Set.fromList (fromSet tags)
-        in Service sid name (fromMaybe mempty summary) descr url toks keys assets tags' enabled
+        in Service sid name (fromMaybe mempty summary) descr url toks keys assets tags' enabled (fromMaybe False verified)
 
 updateService :: MonadClient m
     => ProviderId
@@ -254,13 +254,13 @@ lookupServiceProfile :: MonadClient m
 lookupServiceProfile p s = fmap (fmap mk) $
     retry x1 $ query1 cql $ params One (p, s)
   where
-    cql :: PrepQuery R (ProviderId, ServiceId) (Name, Maybe Text, Text, [Asset], Set ServiceTag, Bool)
+    cql :: PrepQuery R (ProviderId, ServiceId) (Name, Maybe Text, Text, [Asset], Set ServiceTag, Bool, Maybe Bool)
     cql = "SELECT name, summary, descr, assets, tags, enabled \
           \FROM service WHERE provider = ? AND id = ?"
 
-    mk (name, summary, descr, assets, tags, enabled) =
+    mk (name, summary, descr, assets, tags, enabled, verified) =
         let tags' = Set.fromList (fromSet tags)
-        in ServiceProfile s p name (fromMaybe mempty summary) descr assets tags' enabled
+        in ServiceProfile s p name (fromMaybe mempty summary) descr assets tags' enabled (fromMaybe False verified)
 
 -- | Note: Consistency = One
 listServiceProfiles :: MonadClient m
@@ -270,13 +270,13 @@ listServiceProfiles p = fmap (map mk) $
     retry x1 $ query cql $ params One (Identity p)
   where
     cql :: PrepQuery R (Identity ProviderId)
-                       (ServiceId, Name, Maybe Text, Text, [Asset], Set ServiceTag, Bool)
-    cql = "SELECT id, name, summary, descr, assets, tags, enabled \
+                       (ServiceId, Name, Maybe Text, Text, [Asset], Set ServiceTag, Bool, Maybe Bool)
+    cql = "SELECT id, name, summary, descr, assets, tags, enabled, verified \
           \FROM service WHERE provider = ?"
 
-    mk (sid, name, summary, descr, assets, tags, enabled) =
+    mk (sid, name, summary, descr, assets, tags, enabled, verified) =
         let tags' = Set.fromList (fromSet tags)
-        in ServiceProfile sid p name (fromMaybe mempty summary) descr assets tags' enabled
+        in ServiceProfile sid p name (fromMaybe mempty summary) descr assets tags' enabled (fromMaybe False verified)
 
 --------------------------------------------------------------------------------
 -- Service Connection Data
@@ -407,15 +407,21 @@ paginateServiceTags :: MonadClient m
     => QueryAnyTags 1 3
     -> Maybe Name
     -> Int32
+    -> Bool
     -> m ServiceProfilePage
-paginateServiceTags tags start size = liftClient $ do
+paginateServiceTags tags start size verifiedOnly = liftClient $ do
     let start' = Name (maybe "" (toLower . fromName) start)
     let size'  = size + 1
     let tags'  = unpackTags tags
     p <- filterPrefix (fromName start') <$> queryAll start' size' tags'
     r <- mapConcurrently resolveRow (result p)
-    return $! ServiceProfilePage (hasMore p) (catMaybes r)
+    let services = filterVerifiedOnly verifiedOnly (catMaybes r)
+    return $! ServiceProfilePage (hasMore p) services
   where
+    filterVerifiedOnly :: Bool -> [ServiceProfile] -> [ServiceProfile]
+    filterVerifiedOnly True  = filter serviceProfileVerified
+    filterVerifiedOnly False = id
+
     filterPrefix :: Text -> Page TagRow -> Page TagRow
     filterPrefix prefix p = do
         let prefixed = filter (\(Name n, _, _) -> prefix `isPrefixOf` (toLower n)) (result p)

@@ -390,16 +390,17 @@ instance ToJSON NewServiceResponse where
 
 -- | Full service definition as seen by the provider.
 data Service = Service
-    { serviceId      :: !ServiceId
-    , serviceName    :: !Name
-    , serviceSummary :: !Text
-    , serviceDescr   :: !Text
-    , serviceUrl     :: !HttpsUrl
-    , serviceTokens  :: !(List1 ServiceToken)
-    , serviceKeys    :: !(List1 ServiceKey)
-    , serviceAssets  :: ![Asset]
-    , serviceTags    :: !(Set ServiceTag)
-    , serviceEnabled :: !Bool
+    { serviceId       :: !ServiceId
+    , serviceName     :: !Name
+    , serviceSummary  :: !Text
+    , serviceDescr    :: !Text
+    , serviceUrl      :: !HttpsUrl
+    , serviceTokens   :: !(List1 ServiceToken)
+    , serviceKeys     :: !(List1 ServiceKey)
+    , serviceAssets   :: ![Asset]
+    , serviceTags     :: !(Set ServiceTag)
+    , serviceEnabled  :: !Bool
+    , serviceVerified :: !Bool
     }
 
 instance FromJSON Service where
@@ -414,6 +415,7 @@ instance FromJSON Service where
                 <*> o .: "assets"
                 <*> o .: "tags"
                 <*> o .: "enabled"
+                <*> o .: "verified"
 
 instance ToJSON Service where
     toJSON s = object
@@ -427,6 +429,7 @@ instance ToJSON Service where
         # "assets"       .= serviceAssets s
         # "tags"         .= serviceTags s
         # "enabled"      .= serviceEnabled s
+        # "verified"     .= serviceVerified s
         # []
 
 --------------------------------------------------------------------------------
@@ -442,6 +445,7 @@ data ServiceProfile = ServiceProfile
     , serviceProfileAssets   :: ![Asset]
     , serviceProfileTags     :: !(Set ServiceTag)
     , serviceProfileEnabled  :: !Bool
+    , serviceProfileVerified :: !Bool
     }
 
 instance FromJSON ServiceProfile where
@@ -454,6 +458,7 @@ instance FromJSON ServiceProfile where
                        <*> o .: "assets"
                        <*> o .: "tags"
                        <*> o .: "enabled"
+                       <*> o .: "verified"
 
 instance ToJSON ServiceProfile where
     toJSON s = object
@@ -465,6 +470,7 @@ instance ToJSON ServiceProfile where
         # "assets"      .= serviceProfileAssets s
         # "tags"        .= serviceProfileTags s
         # "enabled"     .= serviceProfileEnabled s
+        # "verified"    .= serviceProfileVerified s
         # []
 
 --------------------------------------------------------------------------------
