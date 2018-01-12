@@ -199,7 +199,7 @@ routes = do
         .&> query "tags"
         .&. opt (query "start")
         .&. def (unsafeRange 20) (query "size")
-        .&. def True (query "verified")
+        .&. opt (query "status")
 
     get "/services/tags" (continue getServiceTagList) $
         accept "application" "json"
@@ -508,13 +508,13 @@ deleteAccount (pid ::: req) = do
 verifyService :: ProviderId ::: ServiceId -> Handler Response
 verifyService (pid ::: sid) = do
     _ <- DB.lookupService pid sid >>= maybeServiceNotFound
-    DB.updateServiceVerifiedStatus pid sid True
+    DB.updateServiceStatus pid sid Verified
     return empty
 
 unverifyService :: ProviderId ::: ServiceId -> Handler Response
 unverifyService (pid ::: sid) = do
     _ <- DB.lookupService pid sid >>= maybeServiceNotFound
-    DB.updateServiceVerifiedStatus pid sid False
+    DB.updateServiceStatus pid sid Unverified
     return empty
 
 --------------------------------------------------------------------------------
@@ -535,9 +535,9 @@ getServiceProfile (pid ::: sid) = do
     s <- DB.lookupServiceProfile pid sid >>= maybeServiceNotFound
     return (json s)
 
-listServiceProfilesByTag :: QueryAnyTags 1 3 ::: Maybe Name ::: Range 10 100 Int32 ::: Bool -> Handler Response
-listServiceProfilesByTag (tags ::: start ::: size ::: verified) = do
-    ss <- DB.paginateServiceTags tags start (fromRange size) verified
+listServiceProfilesByTag :: QueryAnyTags 1 3 ::: Maybe Name ::: Range 10 100 Int32 ::: Maybe ServiceStatus -> Handler Response
+listServiceProfilesByTag (tags ::: start ::: size ::: status) = do
+    ss <- DB.paginateServiceTags tags start (fromRange size) status
     return (json ss)
 
 getServiceTagList :: () -> Handler Response

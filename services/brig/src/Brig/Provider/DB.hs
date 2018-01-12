@@ -177,12 +177,12 @@ lookupService pid sid = fmap (fmap mk) $
     retry x1 $ query1 cql $ params Quorum (pid, sid)
   where
     cql :: PrepQuery R (ProviderId, ServiceId)
-                       (Name, Maybe Text, Text, HttpsUrl, List1 ServiceToken, List1 ServiceKey, [Asset], Set ServiceTag, Bool, Maybe Bool)
-    cql = "SELECT name, summary, descr, base_url, auth_tokens, pubkeys, assets, tags, enabled, verified \
+                       (Name, Maybe Text, Text, HttpsUrl, List1 ServiceToken, List1 ServiceKey, [Asset], Set ServiceTag, Bool, Maybe ServiceStatus)
+    cql = "SELECT name, summary, descr, base_url, auth_tokens, pubkeys, assets, tags, enabled, status \
           \FROM service WHERE provider = ? AND id = ?"
 
     mk (name, summary, descr, url, toks, keys, assets, tags, enabled, verified) =
-        Service sid name (fromMaybe mempty summary) descr url toks keys assets (Set.fromList (fromSet tags)) enabled (fromMaybe False verified)
+        Service sid name (fromMaybe mempty summary) descr url toks keys assets (Set.fromList (fromSet tags)) enabled (fromMaybe Unverified verified)
 
 listServices :: MonadClient m
     => ProviderId
@@ -191,13 +191,13 @@ listServices p = fmap (map mk) $
     retry x1 $ query cql $ params Quorum (Identity p)
   where
     cql :: PrepQuery R (Identity ProviderId)
-                       (ServiceId, Name, Maybe Text, Text, HttpsUrl, List1 ServiceToken, List1 ServiceKey, [Asset], Set ServiceTag, Bool, Maybe Bool)
-    cql = "SELECT id, name, summary, descr, base_url, auth_tokens, pubkeys, assets, tags, enabled \
+                       (ServiceId, Name, Maybe Text, Text, HttpsUrl, List1 ServiceToken, List1 ServiceKey, [Asset], Set ServiceTag, Bool, Maybe ServiceStatus)
+    cql = "SELECT id, name, summary, descr, base_url, auth_tokens, pubkeys, assets, tags, enabled, status \
           \FROM service WHERE provider = ?"
 
     mk (sid, name, summary, descr, url, toks, keys, assets, tags, enabled, verified) =
         let tags' = Set.fromList (fromSet tags)
-        in Service sid name (fromMaybe mempty summary) descr url toks keys assets tags' enabled (fromMaybe False verified)
+        in Service sid name (fromMaybe mempty summary) descr url toks keys assets tags' enabled (fromMaybe Unverified verified)
 
 updateService :: MonadClient m
     => ProviderId
@@ -243,12 +243,12 @@ deleteService pid sid =
     cql :: PrepQuery W (ProviderId, ServiceId) ()
     cql = "DELETE FROM service WHERE provider = ? AND id = ?"
 
-updateServiceVerifiedStatus :: MonadClient m => ProviderId -> ServiceId -> Bool -> m ()
-updateServiceVerifiedStatus pid sid verified =
-    retry x5 $ write cql $ params Quorum (verified, pid, sid)
+updateServiceStatus :: MonadClient m => ProviderId -> ServiceId -> ServiceStatus -> m ()
+updateServiceStatus pid sid status =
+    retry x5 $ write cql $ params Quorum (status, pid, sid)
   where
-    cql :: PrepQuery W (Bool, ProviderId, ServiceId) ()
-    cql = "UPDATE service SET verified = ? WHERE provider = ? AND id = ?"
+    cql :: PrepQuery W (ServiceStatus, ProviderId, ServiceId) ()
+    cql = "UPDATE service SET status = ? WHERE provider = ? AND id = ?"
 --------------------------------------------------------------------------------
 -- Service Profiles
 
@@ -260,13 +260,13 @@ lookupServiceProfile :: MonadClient m
 lookupServiceProfile p s = fmap (fmap mk) $
     retry x1 $ query1 cql $ params One (p, s)
   where
-    cql :: PrepQuery R (ProviderId, ServiceId) (Name, Maybe Text, Text, [Asset], Set ServiceTag, Bool, Maybe Bool)
-    cql = "SELECT name, summary, descr, assets, tags, enabled \
+    cql :: PrepQuery R (ProviderId, ServiceId) (Name, Maybe Text, Text, [Asset], Set ServiceTag, Bool, Maybe ServiceStatus)
+    cql = "SELECT name, summary, descr, assets, tags, enabled, status \
           \FROM service WHERE provider = ? AND id = ?"
 
-    mk (name, summary, descr, assets, tags, enabled, verified) =
+    mk (name, summary, descr, assets, tags, enabled, status) =
         let tags' = Set.fromList (fromSet tags)
-        in ServiceProfile s p name (fromMaybe mempty summary) descr assets tags' enabled (fromMaybe False verified)
+        in ServiceProfile s p name (fromMaybe mempty summary) descr assets tags' enabled (fromMaybe Unverified status)
 
 -- | Note: Consistency = One
 listServiceProfiles :: MonadClient m
@@ -276,13 +276,13 @@ listServiceProfiles p = fmap (map mk) $
     retry x1 $ query cql $ params One (Identity p)
   where
     cql :: PrepQuery R (Identity ProviderId)
-                       (ServiceId, Name, Maybe Text, Text, [Asset], Set ServiceTag, Bool, Maybe Bool)
-    cql = "SELECT id, name, summary, descr, assets, tags, enabled, verified \
+                       (ServiceId, Name, Maybe Text, Text, [Asset], Set ServiceTag, Bool, Maybe ServiceStatus)
+    cql = "SELECT id, name, summary, descr, assets, tags, enabled, status \
           \FROM service WHERE provider = ?"
 
-    mk (sid, name, summary, descr, assets, tags, enabled, verified) =
+    mk (sid, name, summary, descr, assets, tags, enabled, status) =
         let tags' = Set.fromList (fromSet tags)
-        in ServiceProfile sid p name (fromMaybe mempty summary) descr assets tags' enabled (fromMaybe False verified)
+        in ServiceProfile sid p name (fromMaybe mempty summary) descr assets tags' enabled (fromMaybe Unverified status)
 
 --------------------------------------------------------------------------------
 -- Service Connection Data
@@ -413,20 +413,20 @@ paginateServiceTags :: MonadClient m
     => QueryAnyTags 1 3
     -> Maybe Name
     -> Int32
-    -> Bool
+    -> Maybe ServiceStatus
     -> m ServiceProfilePage
-paginateServiceTags tags start size verifiedOnly = liftClient $ do
+paginateServiceTags tags start size status = liftClient $ do
     let start' = Name (maybe "" (toLower . fromName) start)
     let size'  = size + 1
     let tags'  = unpackTags tags
     p <- filterPrefix (fromName start') <$> queryAll start' size' tags'
     r <- mapConcurrently resolveRow (result p)
-    let services = filterVerifiedOnly verifiedOnly (catMaybes r)
+    let services = filterByStatus status (catMaybes r)
     return $! ServiceProfilePage (hasMore p) services
   where
-    filterVerifiedOnly :: Bool -> [ServiceProfile] -> [ServiceProfile]
-    filterVerifiedOnly True  = filter serviceProfileVerified
-    filterVerifiedOnly False = id
+    filterByStatus :: Maybe ServiceStatus -> [ServiceProfile] -> [ServiceProfile]
+    filterByStatus (Just st) = filter ((== st) . serviceProfileStatus)
+    filterByStatus Nothing   = id
 
     filterPrefix :: Text -> Page TagRow -> Page TagRow
     filterPrefix prefix p = do

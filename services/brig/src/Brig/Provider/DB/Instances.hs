@@ -18,6 +18,18 @@ import Data.Text.Ascii()
 
 deriving instance Cql ServiceToken
 
+instance Cql ServiceStatus where
+    ctype = Tagged IntColumn
+
+    toCql Unverified = CqlInt 0
+    toCql Verified   = CqlInt 1
+
+    fromCql (CqlInt i) = case i of
+        0 -> return Unverified
+        1 -> return Verified
+        n -> fail $ "unexpected service status: " ++ show n
+    fromCql _ = fail "service status: int expected"
+
 instance Cql ServiceTag where
     ctype = Tagged BigIntColumn
 

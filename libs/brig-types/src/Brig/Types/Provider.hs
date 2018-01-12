@@ -20,6 +20,7 @@ import Brig.Types.Client.Prekey
 import Brig.Types.Common as Common
 import Brig.Types.Provider.Tag (ServiceTag (..))
 import Data.Aeson
+import Data.ByteString (ByteString)
 import Data.ByteString.Conversion
 import Data.Id
 import Data.Int
@@ -39,6 +40,7 @@ import qualified Data.ByteString.Builder as BB
 import qualified Data.ByteString.Char8   as C8
 import qualified Data.Range              as Range
 import qualified Data.Set                as Set
+import qualified Data.Text               as Text
 import qualified Data.Text.Encoding      as Text
 
 --------------------------------------------------------------------------------
@@ -388,19 +390,40 @@ instance ToJSON NewServiceResponse where
 --------------------------------------------------------------------------------
 -- Service
 
+data ServiceStatus = Unverified
+                   | Verified
+                   deriving (Show, Eq, Ord)
+
+instance FromByteString ServiceStatus where
+    parser = parser >>= \t -> case (t :: ByteString) of
+        "unverified" -> pure Unverified
+        "verified"   -> pure Verified
+        _            -> fail $ "Invalid service status: " ++ show t
+
+instance ToByteString ServiceStatus where
+    builder Unverified = "unverified"
+    builder Verified   = "verified"
+
+instance FromJSON ServiceStatus where
+    parseJSON = withText "ServiceStatus" $
+        either fail pure . runParser parser . Text.encodeUtf8
+
+instance ToJSON ServiceStatus where
+    toJSON = String . Text.decodeUtf8 . toByteString'
+
 -- | Full service definition as seen by the provider.
 data Service = Service
-    { serviceId       :: !ServiceId
-    , serviceName     :: !Name
-    , serviceSummary  :: !Text
-    , serviceDescr    :: !Text
-    , serviceUrl      :: !HttpsUrl
-    , serviceTokens   :: !(List1 ServiceToken)
-    , serviceKeys     :: !(List1 ServiceKey)
-    , serviceAssets   :: ![Asset]
-    , serviceTags     :: !(Set ServiceTag)
-    , serviceEnabled  :: !Bool
-    , serviceVerified :: !Bool
+    { serviceId      :: !ServiceId
+    , serviceName    :: !Name
+    , serviceSummary :: !Text
+    , serviceDescr   :: !Text
+    , serviceUrl     :: !HttpsUrl
+    , serviceTokens  :: !(List1 ServiceToken)
+    , serviceKeys    :: !(List1 ServiceKey)
+    , serviceAssets  :: ![Asset]
+    , serviceTags    :: !(Set ServiceTag)
+    , serviceEnabled :: !Bool
+    , serviceStatus  :: !ServiceStatus
     }
 
 instance FromJSON Service where
@@ -415,7 +438,7 @@ instance FromJSON Service where
                 <*> o .: "assets"
                 <*> o .: "tags"
                 <*> o .: "enabled"
-                <*> o .: "verified"
+                <*> o .: "status"
 
 instance ToJSON Service where
     toJSON s = object
@@ -429,7 +452,7 @@ instance ToJSON Service where
         # "assets"       .= serviceAssets s
         # "tags"         .= serviceTags s
         # "enabled"      .= serviceEnabled s
-        # "verified"     .= serviceVerified s
+        # "status"       .= serviceStatus s
         # []
 
 --------------------------------------------------------------------------------
@@ -445,7 +468,7 @@ data ServiceProfile = ServiceProfile
     , serviceProfileAssets   :: ![Asset]
     , serviceProfileTags     :: !(Set ServiceTag)
     , serviceProfileEnabled  :: !Bool
-    , serviceProfileVerified :: !Bool
+    , serviceProfileStatus   :: !ServiceStatus
     }
 
 instance FromJSON ServiceProfile where
@@ -458,7 +481,7 @@ instance FromJSON ServiceProfile where
                        <*> o .: "assets"
                        <*> o .: "tags"
                        <*> o .: "enabled"
-                       <*> o .: "verified"
+                       <*> o .: "status"
 
 instance ToJSON ServiceProfile where
     toJSON s = object
@@ -470,7 +493,7 @@ instance ToJSON ServiceProfile where
         # "assets"      .= serviceProfileAssets s
         # "tags"        .= serviceProfileTags s
         # "enabled"     .= serviceProfileEnabled s
-        # "verified"    .= serviceProfileVerified s
+        # "status"      .= serviceProfileStatus s
         # []
 
 --------------------------------------------------------------------------------
