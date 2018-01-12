@@ -4,6 +4,11 @@ packages:
 - '../types-common'
 - '../metrics-wai'
 - '../metrics-core'
+- location:
+    git: https://gitlab.com/tiago-loureiro/wai-routing.git
+    commit: 2faf009e1dcf2769ba41872bdebaa6bbed48e884
+  extra-dep: true
+
 flags:
   types-common:
     arbitrary: True
